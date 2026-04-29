@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>FUEL.</title>
+    
+    <!-- PWA Metadata -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#020408">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel for single-file execution -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { 
+            background-color: #020408; 
+            -webkit-tap-highlight-color: transparent; 
+            overscroll-behavior: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        input::-webkit-outer-spin-button, 
+        input::-webkit-inner-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] { -moz-appearance: textfield; }
+        
+        .glass-card {
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        .active-scale:active { transform: scale(0.95); transition: transform 0.1s; }
+
+        /* Hide Scrollbar for History */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const Icon = ({ name, size = 16, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [name]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+        };
+
+        const App = () => {
+            const [variableBalance, setVariableBalance] = useState(() => {
+                const saved = localStorage.getItem('fuel_balance');
+                return saved ? parseFloat(saved) : 500;
+            });
+
+            const [initialBalance, setInitialBalance] = useState(() => {
+                const saved = localStorage.getItem('fuel_initial_balance');
+                return saved ? parseFloat(saved) : 500;
+            });
+            
+            const [survivalFloor, setSurvivalFloor] = useState(() => {
+                const saved = localStorage.getItem('fuel_floor');
+                return saved ? parseFloat(saved) : 15;
+            });
+
+            const [cycleStartDay, setCycleStartDay] = useState(() => {
+                const saved = localStorage.getItem('fuel_cycle_start');
+                return saved ? parseInt(saved) : 1;
+            });
+
+            const [simulatorPrice, setSimulatorPrice] = useState("");
+            const [simulatorLabel, setSimulatorLabel] = useState("");
+            
+            const [history, setHistory] = useState(() => {
+                const saved = localStorage.getItem('fuel_history');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            const dateInfo = useMemo(() => {
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                let endYear = now.getFullYear();
+                let endMonth = now.getMonth();
+                const startDay = parseInt(cycleStartDay) || 1;
+                
+                if (now.getDate() >= startDay) endMonth += 1;
+                
+                const targetEndDate = new Date(endYear, endMonth, startDay);
+                const cycleEndDate = new Date(targetEndDate.getTime() - (24 * 60 * 60 * 1000));
+                const diffTime = cycleEndDate.getTime() - today.getTime();
+                const daysLeft = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+                
+                return { 
+                    daysLeft, 
+                    endDateStr: cycleEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) 
+                };
+            }, [cycleStartDay]);
+
+            const currentVal = parseFloat(variableBalance) || 0;
+            const floorVal = parseFloat(survivalFloor) || 0;
+            const simPriceVal = parseFloat(simulatorPrice) || 0;
+
+            const dailyAllowance = currentVal / dateInfo.daysLeft;
+            const isDangerous = dailyAllowance < floorVal;
+            const survivalNeeds = dateInfo.daysLeft * floorVal;
+            const safetyBuffer = currentVal - survivalNeeds;
+            const isProjectedBroke = safetyBuffer < 0;
+            const simulatedDaily = (currentVal - simPriceVal) / dateInfo.daysLeft;
+            const isSimulationBad = simulatedDaily < floorVal;
+
+            useEffect(() => {
+                localStorage.setItem('fuel_balance', variableBalance);
+                localStorage.setItem('fuel_initial_balance', initialBalance);
+                localStorage.setItem('fuel_floor', survivalFloor);
+                localStorage.setItem('fuel_cycle_start', cycleStartDay);
+                localStorage.setItem('fuel_history', JSON.stringify(history));
+            }, [variableBalance, initialBalance, survivalFloor, cycleStartDay, history]);
+
+            const handlePurchase = () => {
+                const numPrice = parseFloat(simulatorPrice);
+                if (isNaN(numPrice) || numPrice <= 0) return;
+                const label = simulatorLabel.trim() || "Expense";
+                
+                setVariableBalance(prev => (parseFloat(prev) || 0) - numPrice);
+                setHistory(prev => [{ 
+                    id: Date.now(), 
+                    label, 
+                    price: numPrice, 
+                    date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+                }, ...prev].slice(0, 20));
+                
+                setSimulatorPrice("");
+                setSimulatorLabel("");
+            };
+
+            const handleNumericInput = (setter) => (e) => {
+                const val = e.target.value;
+                setter(val === "" ? "" : val);
+            };
+
+            return (
+                <div className="min-h-screen text-slate-100 p-5 pb-10 max-w-md mx-auto animate-slide-up">
+                    <header className="mb-8 pt-4 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-4xl font-black tracking-tighter text-white italic leading-none">FUEL.</h1>
+                            <div className="mt-2 flex items-center gap-2 px-2.5 py-1 bg-slate-900/50 border border-slate-800 rounded-lg w-fit">
+                                <Icon name="clock" size={12} className="text-emerald-500" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Payday: {dateInfo.endDateStr}</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="space-y-6">
+                        {/* MAIN CAPACITY CARD */}
+                        <div className={`p-10 rounded-[3.5rem] border transition-all duration-700 shadow-2xl ${
+                            isDangerous ? 'bg-red-950/20 border-red-500/30' : 'bg-emerald-950/20 border-emerald-500/30'
+                        }`}>
+                            <div className="flex flex-col items-center text-center">
+                                <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4 opacity-50">Safe Daily Spend</span>
+                                <div className="flex items-start">
+                                    <span className="text-3xl font-bold text-slate-600 mt-3 mr-1">$</span>
+                                    <span className="text-8xl font-black text-white tracking-tighter leading-none">{dailyAllowance.toFixed(2)}</span>
+                                </div>
+                                <div className={`mt-10 flex items-center gap-2 px-6 py-2.5 rounded-full backdrop-blur-3xl border shadow-inner ${
+                                    isDangerous ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                }`}>
+                                    <Icon name={isDangerous ? "alert-triangle" : "check-circle"} size={16} />
+                                    <span className="text-[12px] font-black uppercase tracking-[0.15em]">{isDangerous ? 'Survival Mode' : 'Budget Secure'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* DASHBOARD GRID */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="glass-card p-6 rounded-[2.5rem] relative focus-within:border-emerald-500/50 transition-all">
+                                <label className="text-[10px] text-emerald-500 uppercase font-black tracking-widest block mb-2 px-1">Bank Total ($)</label>
+                                <input 
+                                    type="number" 
+                                    inputMode="decimal" 
+                                    value={variableBalance} 
+                                    onChange={handleNumericInput(setVariableBalance)} 
+                                    placeholder="0" 
+                                    className="bg-transparent text-3xl font-black text-white tracking-tighter w-full focus:outline-none placeholder:text-slate-800" 
+                                />
+                            </div>
+                            <div className={`border p-6 rounded-[2.5rem] transition-all relative ${isProjectedBroke ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-400'}`}>
+                                <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block mb-2 leading-none">Safety Buffer</span>
+                                <span className="text-3xl font-black tracking-tighter">{isProjectedBroke ? '-$' : '+'}${Math.abs(safetyBuffer).toFixed(0)}</span>
+                                <p className="text-[8px] text-slate-600 font-bold uppercase mt-2 leading-tight tracking-tight">{isProjectedBroke ? "Short on essentials" : "Free for luxuries"}</p>
+                            </div>
+                        </div>
+
+                        {/* CONFIGURATION */}
+                        <section className="bg-slate-900/10 border border-slate-800/30 rounded-[3rem] p-8 space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Initial Target</label>
+                                    <input type="number" inputMode="decimal" value={initialBalance} onChange={handleNumericInput(setInitialBalance)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-blue-500/40 font-black text-xl" />
+                                </div>
+                                <div>
+                                    <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Survival Min</label>
+                                    <input type="number" inputMode="decimal" value={survivalFloor} onChange={handleNumericInput(setSurvivalFloor)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-blue-500/40 font-black text-xl" />
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Reset Day (Payday)</label>
+                                <input type="number" min="1" max="31" value={cycleStartDay} onChange={handleNumericInput(setCycleStartDay)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-emerald-500/40 font-black text-center text-xl" />
+                            </div>
+                        </section>
+
+                        {/* IMPACT SIMULATOR */}
+                        <section className="bg-slate-900/40 backdrop-blur-3xl border border-slate-800/80 rounded-[3rem] p-8 shadow-2xl">
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400"><Icon name="zap" size={22} /></div>
+                                <div><h2 className="font-black text-sm uppercase tracking-[0.2em] text-slate-200 leading-none">Impact Simulator</h2><p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Test & Log Expenses</p></div>
+                            </div>
+                            <div className="space-y-6">
+                                <div className="relative group">
+                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-800 font-black text-2xl group-focus-within:text-blue-400 transition-colors">$</span>
+                                    <input type="number" inputMode="decimal" value={simulatorPrice} onChange={handleNumericInput(setSimulatorPrice)} placeholder="0.00" className="w-full bg-slate-950/50 border border-slate-800/50 rounded-2xl py-6 pl-12 pr-6 focus:outline-none focus:border-blue-500/40 text-2xl font-black placeholder:text-slate-900 shadow-inner" />
+                                </div>
+                                {simPriceVal > 0 && (
+                                    <div className="space-y-6 animate-fade-in">
+                                        <div className="relative">
+                                            <Icon name="tag" size={16} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-700" />
+                                            <input type="text" value={simulatorLabel} onChange={e => setSimulatorLabel(e.target.value)} placeholder="Description" className="w-full bg-slate-950/30 border border-slate-800/50 rounded-2xl py-4 pl-12 pr-6 focus:outline-none focus:border-blue-500/20 text-sm font-bold placeholder:text-slate-900" />
+                                        </div>
+                                        <div className={`p-7 rounded-[2rem] border ${isSimulationBad ? 'bg-red-500/10 border-red-500/20' : 'bg-blue-500/10 border-blue-500/20'}`}>
+                                            <div className="flex justify-between items-center mb-5">
+                                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">New Daily</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-bold text-slate-500 line-through">${dailyAllowance.toFixed(2)}</span>
+                                                    <Icon name="arrow-right" size={12} className="text-slate-600" />
+                                                    <span className={`text-2xl font-black tracking-tighter ${isSimulationBad ? 'text-red-400' : 'text-blue-400'}`}>${simulatedDaily.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                            <button onClick={handlePurchase} className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.4em] active-scale shadow-2xl transition-all ${isSimulationBad ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-500 text-white shadow-blue-500/30'}`}>Confirm Log</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* HISTORY */}
+                        {history.length > 0 && (
+                            <section className="space-y-4 px-2">
+                                <div className="flex justify-between items-center mb-2 px-1">
+                                    <h2 className="text-[10px] text-slate-600 uppercase font-black tracking-[0.4em] flex items-center gap-2"><Icon name="clock" size={10} /> History</h2>
+                                    <button onClick={() => setHistory([])} className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1 active-scale px-2 py-1"><Icon name="trash-2" size={10} /> Clear</button>
+                                </div>
+                                <div className="space-y-3">
+                                    {history.map(item => (
+                                        <div key={item.id} className="flex justify-between items-center bg-slate-900/10 border border-slate-800/30 p-5 rounded-[1.5rem]">
+                                            <div><div className="text-xs font-black text-slate-300 tracking-tight">{item.label}</div><div className="text-[9px] text-slate-600 font-black uppercase mt-1">{item.date}</div></div>
+                                            <div className="text-base font-black text-red-500/80 tracking-tighter">-${item.price.toFixed(2)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
