@@ -14,7 +14,7 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React and Babel for single-file execution -->
+    <!-- React and Babel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -24,77 +24,98 @@
     <style>
         body { 
             background-color: #020408; 
+            color: #f8fafc;
             -webkit-tap-highlight-color: transparent; 
             overscroll-behavior: none;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
-        input::-webkit-outer-spin-button, 
-        input::-webkit-inner-spin-button { 
-            -webkit-appearance: none; 
-            margin: 0; 
-        }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
         
-        .glass-card {
-            background: rgba(15, 23, 42, 0.4);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        @keyframes slide-up {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        
+        @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         
-        .active-scale:active { transform: scale(0.95); transition: transform 0.1s; }
+        .progress-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.05); overflow: hidden; }
+        .progress-fill { height: 100%; transition: width 1s ease-out; }
 
-        /* Hide Scrollbar for History */
+        ::placeholder { color: #1e293b; opacity: 1; }
+        
+        /* Tap Feedback */
+        .active-scale:active { transform: scale(0.95); transition: transform 0.1s; }
+        
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tab-bar {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(24px);
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         const Icon = ({ name, size = 16, className = "" }) => {
+            const iconRef = useRef(null);
+            
             useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
+                if (window.lucide && iconRef.current) {
+                    window.lucide.createIcons({
+                        icons: window.lucide.icons,
+                        nameAttr: 'data-lucide'
+                    });
                 }
-            }, [name]);
-            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+            }, [name, size, className]);
+
+            return (
+                <span 
+                    ref={iconRef} 
+                    className="inline-flex items-center justify-center shrink-0" 
+                    style={{ width: size, height: size }}
+                    dangerouslySetInnerHTML={{ 
+                        __html: `<i data-lucide="${name}" style="width: ${size}px; height: ${size}px;" class="${className}"></i>` 
+                    }}
+                />
+            );
         };
 
         const App = () => {
-            const [variableBalance, setVariableBalance] = useState(() => {
-                const saved = localStorage.getItem('fuel_balance');
-                return saved ? parseFloat(saved) : 500;
+            const [activeTab, setActiveTab] = useState('fuel'); // 'auto', 'fuel', or 'vault'
+
+            const [buckets, setBuckets] = useState(() => {
+                const saved = localStorage.getItem('fuel_v6_buckets');
+                return saved ? JSON.parse(saved) : { freedom: "500", bigPurchase: "500", spending: "1000" };
             });
 
-            const [initialBalance, setInitialBalance] = useState(() => {
-                const saved = localStorage.getItem('fuel_initial_balance');
-                return saved ? parseFloat(saved) : 500;
-            });
-            
-            const [survivalFloor, setSurvivalFloor] = useState(() => {
-                const saved = localStorage.getItem('fuel_floor');
-                return saved ? parseFloat(saved) : 15;
-            });
-
-            const [cycleStartDay, setCycleStartDay] = useState(() => {
-                const saved = localStorage.getItem('fuel_cycle_start');
-                return saved ? parseInt(saved) : 1;
+            const [rules, setRules] = useState(() => {
+                const saved = localStorage.getItem('fuel_v6_rules');
+                return saved ? JSON.parse(saved) : { 
+                    freedomPercent: "20", 
+                    bigPurchasePercent: "30", 
+                    spendingPercent: "50",
+                    survivalFloor: "20", 
+                    paydayDay: "1" 
+                };
             });
 
+            const [incomeInput, setIncomeInput] = useState("");
             const [simulatorPrice, setSimulatorPrice] = useState("");
             const [simulatorLabel, setSimulatorLabel] = useState("");
+            const [showSettings, setShowSettings] = useState(false);
             
             const [history, setHistory] = useState(() => {
-                const saved = localStorage.getItem('fuel_history');
+                const saved = localStorage.getItem('fuel_v6_history');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            const [wishlist, setWishlist] = useState(() => {
+                const saved = localStorage.getItem('fuel_v6_wishlist');
                 return saved ? JSON.parse(saved) : [];
             });
 
@@ -103,184 +124,388 @@
                 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                 let endYear = now.getFullYear();
                 let endMonth = now.getMonth();
-                const startDay = parseInt(cycleStartDay) || 1;
-                
+                const startDay = parseInt(rules.paydayDay) || 1;
                 if (now.getDate() >= startDay) endMonth += 1;
-                
                 const targetEndDate = new Date(endYear, endMonth, startDay);
                 const cycleEndDate = new Date(targetEndDate.getTime() - (24 * 60 * 60 * 1000));
                 const diffTime = cycleEndDate.getTime() - today.getTime();
                 const daysLeft = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
-                
-                return { 
-                    daysLeft, 
-                    endDateStr: cycleEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) 
-                };
-            }, [cycleStartDay]);
+                return { daysLeft, endDateStr: cycleEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) };
+            }, [rules.paydayDay]);
 
-            const currentVal = parseFloat(variableBalance) || 0;
-            const floorVal = parseFloat(survivalFloor) || 0;
+            const bucketSpendingNum = parseFloat(buckets.spending) || 0;
+            const bucketFreedomNum = parseFloat(buckets.freedom) || 0;
+            const bucketBigNum = parseFloat(buckets.bigPurchase) || 0;
+            const totalWealth = bucketFreedomNum + bucketBigNum + bucketSpendingNum;
+            const dailySpendingLimit = bucketSpendingNum / dateInfo.daysLeft;
             const simPriceVal = parseFloat(simulatorPrice) || 0;
 
-            const dailyAllowance = currentVal / dateInfo.daysLeft;
-            const isDangerous = dailyAllowance < floorVal;
-            const survivalNeeds = dateInfo.daysLeft * floorVal;
-            const safetyBuffer = currentVal - survivalNeeds;
-            const isProjectedBroke = safetyBuffer < 0;
-            const simulatedDaily = (currentVal - simPriceVal) / dateInfo.daysLeft;
-            const isSimulationBad = simulatedDaily < floorVal;
-
-            useEffect(() => {
-                localStorage.setItem('fuel_balance', variableBalance);
-                localStorage.setItem('fuel_initial_balance', initialBalance);
-                localStorage.setItem('fuel_floor', survivalFloor);
-                localStorage.setItem('fuel_cycle_start', cycleStartDay);
-                localStorage.setItem('fuel_history', JSON.stringify(history));
-            }, [variableBalance, initialBalance, survivalFloor, cycleStartDay, history]);
-
-            const handlePurchase = () => {
-                const numPrice = parseFloat(simulatorPrice);
-                if (isNaN(numPrice) || numPrice <= 0) return;
-                const label = simulatorLabel.trim() || "Expense";
+            const getDecision = (price) => {
+                const p = parseFloat(price) || 0;
+                if (p <= 0) return { color: 'slate', label: 'IDLE', text: 'Enter a price.', icon: 'hash' };
                 
-                setVariableBalance(prev => (parseFloat(prev) || 0) - numPrice);
-                setHistory(prev => [{ 
-                    id: Date.now(), 
-                    label, 
-                    price: numPrice, 
-                    date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
-                }, ...prev].slice(0, 20));
+                const remainingBankAfter = bucketSpendingNum - p;
+                const survivalFloorNeeded = dateInfo.daysLeft * (parseFloat(rules.survivalFloor) || 0);
+                const recoveryDays = Math.ceil(p / Math.max(1, dailySpendingLimit));
                 
-                setSimulatorPrice("");
-                setSimulatorLabel("");
+                if (remainingBankAfter < survivalFloorNeeded) return { color: 'rose', label: 'DANGER', text: 'Violates Survival Floor.', icon: 'alert-octagon' };
+                if (recoveryDays > 21) return { color: 'rose', label: 'CRITICAL', text: 'High risk lifestyle impact.', icon: 'frown' };
+                if (recoveryDays > 7) return { color: 'amber', label: 'CAUTION', text: 'Moderate recovery window.', icon: 'info' };
+                return { color: 'emerald', label: 'SAFE', text: 'Well within current capacity.', icon: 'shield-check' };
             };
 
-            const handleNumericInput = (setter) => (e) => {
-                const val = e.target.value;
-                setter(val === "" ? "" : val);
+            const clarityVerdict = getDecision(simPriceVal);
+
+            useEffect(() => {
+                localStorage.setItem('fuel_v6_buckets', JSON.stringify(buckets));
+                localStorage.setItem('fuel_v6_rules', JSON.stringify(rules));
+                localStorage.setItem('fuel_v6_history', JSON.stringify(history));
+                localStorage.setItem('fuel_v6_wishlist', JSON.stringify(wishlist));
+            }, [buckets, rules, history, wishlist]);
+
+            const handleIncomeAllocate = () => {
+                const total = parseFloat(incomeInput);
+                if (isNaN(total) || total <= 0) return;
+                
+                const rFreedom = parseFloat(rules.freedomPercent) || 0;
+                const rBig = parseFloat(rules.bigPurchasePercent) || 0;
+                const rSpend = parseFloat(rules.spendingPercent) || 0;
+
+                setBuckets({
+                    freedom: (bucketFreedomNum + (total * (rFreedom / 100))).toString(),
+                    bigPurchase: (bucketBigNum + (total * (rBig / 100))).toString(),
+                    spending: (bucketSpendingNum + (total * (rSpend / 100))).toString()
+                });
+                setIncomeInput("");
+                alert("Payday Processed: Buckets updated.");
+                setActiveTab('fuel');
+            };
+
+            const confirmPurchase = () => {
+                if (simPriceVal <= 0) return;
+                const label = simulatorLabel.trim() || "Expense";
+                setBuckets(prev => ({ ...prev, spending: (parseFloat(prev.spending || 0) - simPriceVal).toString() }));
+                setHistory(prev => [{ id: Date.now(), label, price: simPriceVal, date: 'Now' }, ...prev].slice(0, 10));
+                setSimulatorPrice(""); setSimulatorLabel("");
+            };
+
+            const saveToWishlist = () => {
+                if (simPriceVal <= 0) return;
+                const label = simulatorLabel.trim() || "Saved Item";
+                setWishlist(prev => [{ id: Date.now(), label, price: simPriceVal }, ...prev]);
+                setSimulatorPrice(""); setSimulatorLabel("");
+                alert("Saved to Vault.");
+            };
+
+            const handleManualEdit = (key, val) => {
+                setBuckets(prev => ({ ...prev, [key]: val }));
             };
 
             return (
-                <div className="min-h-screen text-slate-100 p-5 pb-10 max-w-md mx-auto animate-slide-up">
-                    <header className="mb-8 pt-4 flex justify-between items-center">
+                <div className="min-h-screen text-slate-100 p-5 pb-28 max-w-md mx-auto animate-slide-up relative">
+                    <header className="mb-8 pt-4 flex justify-between items-start">
                         <div>
-                            <h1 className="text-4xl font-black tracking-tighter text-white italic leading-none">FUEL.</h1>
+                            <h1 className="text-4xl font-black tracking-tighter text-white italic leading-none uppercase">Fuel.</h1>
                             <div className="mt-2 flex items-center gap-2 px-2.5 py-1 bg-slate-900/50 border border-slate-800 rounded-lg w-fit">
                                 <Icon name="clock" size={12} className="text-emerald-500" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Payday: {dateInfo.endDateStr}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Next Payday: {dateInfo.endDateStr}</span>
                             </div>
                         </div>
+                        <button onClick={() => setShowSettings(true)} className="p-3 glass rounded-2xl border border-slate-800 active-scale shadow-lg">
+                            <Icon name="settings" size={20} className="text-slate-400" />
+                        </button>
                     </header>
 
-                    <main className="space-y-6">
-                        {/* MAIN CAPACITY CARD */}
-                        <div className={`p-10 rounded-[3.5rem] border transition-all duration-700 shadow-2xl ${
-                            isDangerous ? 'bg-red-950/20 border-red-500/30' : 'bg-emerald-950/20 border-emerald-500/30'
-                        }`}>
-                            <div className="flex flex-col items-center text-center">
-                                <span className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] mb-4 opacity-50">Safe Daily Spend</span>
-                                <div className="flex items-start">
-                                    <span className="text-3xl font-bold text-slate-600 mt-3 mr-1">$</span>
-                                    <span className="text-8xl font-black text-white tracking-tighter leading-none">{dailyAllowance.toFixed(2)}</span>
-                                </div>
-                                <div className={`mt-10 flex items-center gap-2 px-6 py-2.5 rounded-full backdrop-blur-3xl border shadow-inner ${
-                                    isDangerous ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                }`}>
-                                    <Icon name={isDangerous ? "alert-triangle" : "check-circle"} size={16} />
-                                    <span className="text-[12px] font-black uppercase tracking-[0.15em]">{isDangerous ? 'Survival Mode' : 'Budget Secure'}</span>
-                                </div>
+                    {activeTab === 'auto' && (
+                        <main className="space-y-8 animate-slide-up">
+                            <div className="px-2">
+                                <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Auto.</h2>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Income Allocation Engine</p>
                             </div>
-                        </div>
 
-                        {/* DASHBOARD GRID */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="glass-card p-6 rounded-[2.5rem] relative focus-within:border-emerald-500/50 transition-all">
-                                <label className="text-[10px] text-emerald-500 uppercase font-black tracking-widest block mb-2 px-1">Bank Total ($)</label>
-                                <input 
-                                    type="number" 
-                                    inputMode="decimal" 
-                                    value={variableBalance} 
-                                    onChange={handleNumericInput(setVariableBalance)} 
-                                    placeholder="0" 
-                                    className="bg-transparent text-3xl font-black text-white tracking-tighter w-full focus:outline-none placeholder:text-slate-800" 
-                                />
-                            </div>
-                            <div className={`border p-6 rounded-[2.5rem] transition-all relative ${isProjectedBroke ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-400'}`}>
-                                <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block mb-2 leading-none">Safety Buffer</span>
-                                <span className="text-3xl font-black tracking-tighter">{isProjectedBroke ? '-$' : '+'}${Math.abs(safetyBuffer).toFixed(0)}</span>
-                                <p className="text-[8px] text-slate-600 font-bold uppercase mt-2 leading-tight tracking-tight">{isProjectedBroke ? "Short on essentials" : "Free for luxuries"}</p>
-                            </div>
-                        </div>
-
-                        {/* CONFIGURATION */}
-                        <section className="bg-slate-900/10 border border-slate-800/30 rounded-[3rem] p-8 space-y-6">
-                            <div className="grid grid-cols-2 gap-6">
-                                <div>
-                                    <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Initial Target</label>
-                                    <input type="number" inputMode="decimal" value={initialBalance} onChange={handleNumericInput(setInitialBalance)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-blue-500/40 font-black text-xl" />
+                            <section className="glass p-8 rounded-[3rem] shadow-2xl border-blue-500/10 space-y-8">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-400"><Icon name="zap" size={24} /></div>
+                                    <div><h2 className="font-black text-sm uppercase tracking-[0.2em] text-slate-200 leading-none">Payday Input</h2><p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-widest">Update buckets automatically</p></div>
                                 </div>
-                                <div>
-                                    <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Survival Min</label>
-                                    <input type="number" inputMode="decimal" value={survivalFloor} onChange={handleNumericInput(setSurvivalFloor)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-blue-500/40 font-black text-xl" />
+                                <div className="relative">
+                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-700 font-black text-2xl">$</span>
+                                    <input type="number" inputMode="decimal" value={incomeInput} onChange={e => setIncomeInput(e.target.value)} placeholder="0.00" className="w-full bg-slate-950 border border-slate-800/50 rounded-3xl py-6 pl-12 pr-6 focus:outline-none focus:border-blue-500/40 text-3xl font-black placeholder:text-slate-900" />
                                 </div>
-                            </div>
-                            <div className="text-center">
-                                <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-2 px-1">Reset Day (Payday)</label>
-                                <input type="number" min="1" max="31" value={cycleStartDay} onChange={handleNumericInput(setCycleStartDay)} className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-4 px-5 focus:outline-none focus:border-emerald-500/40 font-black text-center text-xl" />
-                            </div>
-                        </section>
-
-                        {/* IMPACT SIMULATOR */}
-                        <section className="bg-slate-900/40 backdrop-blur-3xl border border-slate-800/80 rounded-[3rem] p-8 shadow-2xl">
-                            <div className="flex items-center gap-4 mb-8">
-                                <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 text-blue-400"><Icon name="zap" size={22} /></div>
-                                <div><h2 className="font-black text-sm uppercase tracking-[0.2em] text-slate-200 leading-none">Impact Simulator</h2><p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Test & Log Expenses</p></div>
-                            </div>
-                            <div className="space-y-6">
-                                <div className="relative group">
-                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-800 font-black text-2xl group-focus-within:text-blue-400 transition-colors">$</span>
-                                    <input type="number" inputMode="decimal" value={simulatorPrice} onChange={handleNumericInput(setSimulatorPrice)} placeholder="0.00" className="w-full bg-slate-950/50 border border-slate-800/50 rounded-2xl py-6 pl-12 pr-6 focus:outline-none focus:border-blue-500/40 text-2xl font-black placeholder:text-slate-900 shadow-inner" />
-                                </div>
-                                {simPriceVal > 0 && (
-                                    <div className="space-y-6 animate-fade-in">
-                                        <div className="relative">
-                                            <Icon name="tag" size={16} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-700" />
-                                            <input type="text" value={simulatorLabel} onChange={e => setSimulatorLabel(e.target.value)} placeholder="Description" className="w-full bg-slate-950/30 border border-slate-800/50 rounded-2xl py-4 pl-12 pr-6 focus:outline-none focus:border-blue-500/20 text-sm font-bold placeholder:text-slate-900" />
+                                
+                                <div className="space-y-4 px-2">
+                                    <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em]">Projected Split</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
+                                            <span>Spending ({rules.spendingPercent}%)</span>
+                                            <span className="text-white">${((parseFloat(incomeInput || 0) * (parseFloat(rules.spendingPercent) || 0)) / 100).toFixed(0)}</span>
                                         </div>
-                                        <div className={`p-7 rounded-[2rem] border ${isSimulationBad ? 'bg-red-500/10 border-red-500/20' : 'bg-blue-500/10 border-blue-500/20'}`}>
-                                            <div className="flex justify-between items-center mb-5">
-                                                <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">New Daily</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-bold text-slate-500 line-through">${dailyAllowance.toFixed(2)}</span>
-                                                    <Icon name="arrow-right" size={12} className="text-slate-600" />
-                                                    <span className={`text-2xl font-black tracking-tighter ${isSimulationBad ? 'text-red-400' : 'text-blue-400'}`}>${simulatedDaily.toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                            <button onClick={handlePurchase} className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.4em] active-scale shadow-2xl transition-all ${isSimulationBad ? 'bg-red-500 text-white shadow-red-500/30' : 'bg-blue-500 text-white shadow-blue-500/30'}`}>Confirm Log</button>
+                                        <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
+                                            <span>Freedom ({rules.freedomPercent}%)</span>
+                                            <span className="text-white">${((parseFloat(incomeInput || 0) * (parseFloat(rules.freedomPercent) || 0)) / 100).toFixed(0)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs font-bold uppercase text-slate-400">
+                                            <span>Big Buy ({rules.bigPurchasePercent}%)</span>
+                                            <span className="text-white">${((parseFloat(incomeInput || 0) * (parseFloat(rules.bigPurchasePercent) || 0)) / 100).toFixed(0)}</span>
                                         </div>
                                     </div>
-                                )}
-                            </div>
-                        </section>
-
-                        {/* HISTORY */}
-                        {history.length > 0 && (
-                            <section className="space-y-4 px-2">
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <h2 className="text-[10px] text-slate-600 uppercase font-black tracking-[0.4em] flex items-center gap-2"><Icon name="clock" size={10} /> History</h2>
-                                    <button onClick={() => setHistory([])} className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1 active-scale px-2 py-1"><Icon name="trash-2" size={10} /> Clear</button>
                                 </div>
-                                <div className="space-y-3">
-                                    {history.map(item => (
-                                        <div key={item.id} className="flex justify-between items-center bg-slate-900/10 border border-slate-800/30 p-5 rounded-[1.5rem]">
-                                            <div><div className="text-xs font-black text-slate-300 tracking-tight">{item.label}</div><div className="text-[9px] text-slate-600 font-black uppercase mt-1">{item.date}</div></div>
-                                            <div className="text-base font-black text-red-500/80 tracking-tighter">-${item.price.toFixed(2)}</div>
+
+                                <button onClick={handleIncomeAllocate} className="w-full py-5 rounded-2xl bg-blue-500 text-black font-black text-xs uppercase tracking-[0.4em] active-scale shadow-xl shadow-blue-500/20">Distribute Payday</button>
+                            </section>
+                            
+                            <p className="text-[9px] text-slate-600 font-black uppercase text-center tracking-[0.2em] px-10">Use the gear icon in the top right to adjust your percentage rules</p>
+                        </main>
+                    )}
+
+                    {activeTab === 'fuel' && (
+                        <main className="space-y-6 animate-slide-up">
+                            <div className={`p-8 rounded-[2.5rem] border transition-all duration-700 shadow-2xl ${dailySpendingLimit < parseFloat(rules.survivalFloor || 0) ? 'bg-red-950/20 border-red-500/30' : 'bg-emerald-950/20 border-emerald-500/30'}`}>
+                                <div className="flex flex-col items-center text-center">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] mb-3 opacity-50">Daily Spending Limit</span>
+                                    <div className="flex items-start justify-center">
+                                        <span className="text-xl font-bold text-slate-700 mt-3 mr-1">$</span>
+                                        <span className="text-6xl font-black text-white tracking-tighter leading-none">{dailySpendingLimit.toFixed(0)}</span>
+                                    </div>
+                                    <div className={`mt-8 px-6 py-2 rounded-full backdrop-blur-3xl border shadow-inner inline-flex items-center gap-2.5 ${dailySpendingLimit < parseFloat(rules.survivalFloor || 0) ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+                                        <Icon name={dailySpendingLimit < parseFloat(rules.survivalFloor || 0) ? "alert-triangle" : "shield-check"} size={14} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest italic">{dailySpendingLimit < parseFloat(rules.survivalFloor || 0) ? 'Survival Warning' : 'Safe to Spend'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4">
+                                <div className="glass p-6 rounded-[2.5rem] border-emerald-500/20 shadow-lg ring-1 ring-emerald-500/10">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Main Spending (Bank)</span>
+                                        <Icon name="wallet" size={14} className="text-emerald-500 opacity-50" />
+                                    </div>
+                                    <input type="number" value={buckets.spending} onChange={(e) => handleManualEdit('spending', e.target.value)} className="bg-transparent text-4xl font-black text-white tracking-tighter w-full focus:outline-none" />
+                                    <div className="mt-3 progress-bar"><div className="progress-fill bg-emerald-500" style={{ width: `${(bucketSpendingNum / Math.max(1, totalWealth)) * 100}%` }} /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    {[
+                                        { id: 'freedom', label: 'Freedom Fund', color: 'blue', icon: 'shield', num: bucketFreedomNum },
+                                        { id: 'bigPurchase', label: 'Big Purchase', color: 'purple', icon: 'shopping-cart', num: bucketBigNum }
+                                    ].map(b => (
+                                        <div key={b.id} className="glass p-6 rounded-[2.5rem] border-white/5 shadow-lg">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{b.label}</span>
+                                                <Icon name={b.icon} size={12} className={`text-${b.color}-500 opacity-40`} />
+                                            </div>
+                                            <input type="number" value={buckets[b.id]} onChange={(e) => handleManualEdit(b.id, e.target.value)} className="bg-transparent text-2xl font-black text-white tracking-tighter w-full focus:outline-none" />
+                                            <div className="mt-3 progress-bar"><div className={`progress-fill bg-${b.color}-500`} style={{ width: `${(b.num / Math.max(1, totalWealth)) * 100}%` }} /></div>
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+
+                            <section id="simulator" className="glass p-8 rounded-[3rem] shadow-2xl border-purple-500/10 space-y-6">
+                                <div className="flex items-center gap-4 mb-2">
+                                    <div className="p-3 bg-purple-500/10 rounded-2xl text-purple-400"><Icon name="cpu" size={24} /></div>
+                                    <div><h2 className="font-black text-sm uppercase tracking-[0.2em] text-slate-200">Decision Engine</h2><p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5 tracking-widest">Financial Clarity Check</p></div>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="relative">
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-700 font-black text-2xl group-focus-within:text-purple-500 transition-colors">$</span>
+                                        <input type="number" inputMode="decimal" value={simulatorPrice} onChange={e => setSimulatorPrice(e.target.value)} placeholder="Cost..." className="w-full bg-slate-950 border border-slate-800/50 rounded-2xl py-6 pl-12 pr-6 focus:outline-none focus:border-purple-500/40 text-2xl font-black placeholder:text-slate-900 shadow-inner" />
+                                    </div>
+                                    {simPriceVal > 0 && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <input type="text" value={simulatorLabel} onChange={e => setSimulatorLabel(e.target.value)} placeholder="What is this for?" className="w-full bg-slate-950/30 border border-slate-800/50 rounded-2xl py-4 px-6 focus:outline-none focus:border-purple-500/20 text-sm font-bold placeholder:text-slate-800" />
+                                            <div className={`p-8 rounded-[2.5rem] border bg-black/40 ${'border-'+clarityVerdict.color+'-500/30'}`}>
+                                                <div className="flex justify-between items-center mb-6">
+                                                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.4em]">Clarity Report</span>
+                                                    <span className={`px-4 py-1 rounded-full text-black font-black text-[10px] uppercase tracking-widest ${'bg-'+clarityVerdict.color+'-500'}`}>{clarityVerdict.label}</span>
+                                                </div>
+                                                <div className="flex items-center gap-4 mb-6">
+                                                    <Icon name={clarityVerdict.icon} size={24} className={`text-${clarityVerdict.color}-500`} />
+                                                    <p className="text-sm font-black text-white uppercase leading-tight">{clarityVerdict.text}</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="bg-white/5 p-4 rounded-xl text-center">
+                                                        <span className="text-[9px] font-black text-slate-600 uppercase block mb-1">New Daily Limit</span>
+                                                        <span className="text-lg font-black text-white">${((bucketSpendingNum - simPriceVal) / dateInfo.daysLeft).toFixed(0)}</span>
+                                                        <p className="text-[8px] text-slate-700 font-bold uppercase mt-1 leading-none tracking-tighter">Budget After Buy</p>
+                                                    </div>
+                                                    <div className="bg-white/5 p-4 rounded-xl text-center">
+                                                        <span className="text-[9px] font-black text-slate-600 uppercase block mb-1">Bank Impact</span>
+                                                        <span className="text-lg font-black text-white">{(simPriceVal/Math.max(1,bucketSpendingNum)*100).toFixed(0)}%</span>
+                                                        <p className="text-[8px] text-slate-700 font-bold uppercase mt-1 leading-none tracking-tighter">Liquidity Depletion</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <button onClick={confirmPurchase} className={`py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.4em] active-scale shadow-2xl ${'bg-'+clarityVerdict.color+'-500'} text-black shadow-${clarityVerdict.color}-500/20`}>Log to Bank</button>
+                                                <button onClick={saveToWishlist} className="py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.4em] active-scale bg-slate-800 text-slate-400 border border-slate-700">Add to Vault</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </section>
-                        )}
-                    </main>
+
+                            {history.length > 0 && (
+                                <section className="space-y-4 px-2">
+                                    <div className="flex justify-between items-center mb-2 px-1">
+                                        <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-[0.4em]">Spending History</h3>
+                                        <button onClick={() => setHistory([])} className="text-[9px] font-black text-slate-500 uppercase tracking-widest active-scale px-2 py-1"><Icon name="trash-2" size={10} /> Clear</button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {history.map(item => (
+                                            <div key={item.id} className="glass p-5 rounded-[1.5rem] border-white/5 flex justify-between items-center opacity-70">
+                                                <div><div className="text-xs font-black text-slate-300 tracking-tight leading-none uppercase">{item.label}</div><div className="text-[9px] text-slate-600 font-black uppercase mt-1">Date Logged</div></div>
+                                                <div className="text-base font-black text-red-500/80 tracking-tighter">-${item.price.toFixed(0)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
+
+                            <div className="pt-10 opacity-20 text-center">
+                                <button onClick={() => { if(confirm("Hard reset all financial data?")) { localStorage.clear(); window.location.reload(); } }} className="text-[9px] font-black uppercase tracking-[0.5em] text-white">Full System Purge</button>
+                            </div>
+                        </main>
+                    )}
+
+                    {activeTab === 'vault' && (
+                        <main className="space-y-6 animate-slide-up pb-10">
+                            <div className="px-2">
+                                <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Vault.</h2>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Unspent Desires & Live Impact</p>
+                            </div>
+
+                            <div className="glass mx-2 p-6 rounded-[2.5rem] border-emerald-500/20 shadow-lg flex justify-between items-center bg-emerald-500/5">
+                                <div>
+                                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] block mb-1">Available Spending</span>
+                                    <div className="flex items-baseline gap-1">
+                                        <span className="text-3xl font-black text-white tracking-tighter leading-none">${bucketSpendingNum.toFixed(0)}</span>
+                                        <span className="text-xs font-bold text-emerald-500/50 uppercase tracking-widest">Current Bank</span>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.1em] block mb-1">Daily Cap</span>
+                                    <span className="text-xl font-bold text-white tracking-tighter leading-none">${dailySpendingLimit.toFixed(0)}</span>
+                                </div>
+                            </div>
+
+                            {wishlist.length === 0 ? (
+                                <div className="glass p-16 rounded-[3rem] text-center opacity-30 mt-4">
+                                    <Icon name="archive" size={48} className="mx-auto mb-4 text-slate-500" />
+                                    <p className="text-xs font-bold uppercase tracking-widest">Vault is empty</p>
+                                    <p className="text-[9px] mt-2 font-medium">Add items from the Dashboard</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {wishlist.map(item => {
+                                        const liveVerdict = getDecision(item.price);
+                                        const liveImpact = (item.price / Math.max(1, bucketSpendingNum) * 100).toFixed(0);
+                                        const liveNewDaily = ((bucketSpendingNum - item.price) / dateInfo.daysLeft).toFixed(0);
+                                        
+                                        return (
+                                            <div key={item.id} className="glass p-8 rounded-[3rem] border-white/5 relative overflow-hidden">
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <div>
+                                                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full mb-2 inline-block ${'bg-'+liveVerdict.color+'-500 text-black'}`}>{liveVerdict.label}</span>
+                                                        <h4 className="text-xl font-black text-white uppercase tracking-tight leading-none">{item.label}</h4>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-2xl font-black text-white tracking-tighter">${item.price}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                                    <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                                                        <span className="text-[8px] font-black text-slate-500 uppercase block mb-1">Live Impact</span>
+                                                        <span className="text-lg font-black text-white">{liveImpact}%</span>
+                                                    </div>
+                                                    <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                                                        <span className="text-[8px] font-black text-slate-500 uppercase block mb-1">New Daily Limit</span>
+                                                        <span className="text-lg font-black text-white">${liveNewDaily}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <button 
+                                                        onClick={() => {
+                                                            setBuckets(prev => ({ ...prev, spending: (parseFloat(prev.spending || 0) - item.price).toString() }));
+                                                            setHistory(h => [{id: Date.now(), label: item.label, price: item.price, date: 'Now'}, ...h]);
+                                                            setWishlist(w => w.filter(i => i.id !== item.id));
+                                                            setActiveTab('fuel');
+                                                        }}
+                                                        className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] active-scale bg-${liveVerdict.color}-500 text-black`}
+                                                    >
+                                                        Execute Purchase
+                                                    </button>
+                                                    <button onClick={() => setWishlist(w => w.filter(i => i.id !== item.id))} className="px-5 py-4 rounded-2xl bg-white/5 text-rose-500/60 active-scale border border-white/5">
+                                                        <Icon name="trash-2" size={18} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </main>
+                    )}
+
+                    <nav className="fixed bottom-0 left-0 right-0 tab-bar h-24 flex justify-around items-center px-6 pb-6 z-50">
+                        <button onClick={() => setActiveTab('auto')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'auto' ? 'text-blue-400' : 'text-slate-600 opacity-50'}`}>
+                            <Icon name="zap" size={24} />
+                            <span className="text-[9px] font-black uppercase tracking-widest leading-none">Auto</span>
+                        </button>
+                        
+                        <div className="w-px h-8 bg-slate-800"></div>
+                        
+                        <button onClick={() => setActiveTab('fuel')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'fuel' ? 'text-emerald-400' : 'text-slate-600 opacity-50'}`}>
+                            <Icon name="layout-grid" size={24} />
+                            <span className="text-[9px] font-black uppercase tracking-widest leading-none">Fuel</span>
+                        </button>
+                        
+                        <div className="w-px h-8 bg-slate-800"></div>
+
+                        <button onClick={() => setActiveTab('vault')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'vault' ? 'text-purple-400' : 'text-slate-600 opacity-50'}`}>
+                            <div className="relative">
+                                <Icon name="archive" size={24} />
+                                {wishlist.length > 0 && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#020408]"></div>}
+                            </div>
+                            <span className="text-[9px] font-black uppercase tracking-widest leading-none">Vault</span>
+                        </button>
+                    </nav>
+
+                    {showSettings && (
+                        <div className="fixed inset-0 z-[100] flex items-end justify-center">
+                            <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowSettings(false)}></div>
+                            <div className="relative bg-[#080a0f] w-full max-w-lg rounded-t-[4rem] p-10 border-t border-slate-800 animate-slide-up shadow-[0_-20px_100px_rgba(0,0,0,1)]">
+                                <div className="w-16 h-1.5 bg-slate-800 rounded-full mx-auto mb-10"></div>
+                                <div className="flex justify-between items-center mb-10 px-2">
+                                    <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Engine Rules</h2>
+                                    <button onClick={() => setShowSettings(false)} className="p-2 text-slate-500 active-scale"><Icon name="x" size={24} /></button>
+                                </div>
+                                <div className="space-y-8">
+                                    <div>
+                                        <label className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] block mb-4 px-1">Allocation Rules (%)</label>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            {[{ id: 'freedomPercent', label: 'Freedom' }, { id: 'bigPurchasePercent', label: 'Big Buy' }, { id: 'spendingPercent', label: 'Spending' }].map(r => (
+                                                <div key={r.id} className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                                                    <span className="text-[9px] font-black text-slate-600 uppercase block mb-1">{r.label}</span>
+                                                    <input type="number" value={rules[r.id]} onChange={e => setRules({...rules, [r.id]: e.target.value})} className="bg-transparent text-xl font-black text-white w-full focus:outline-none" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] px-1">Survival Min ($/d)</label>
+                                            <input type="number" value={rules.survivalFloor} onChange={e => setRules({...rules, survivalFloor: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-5 px-6 focus:outline-none focus:border-blue-500/50 text-xl font-black text-white" />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] px-1">Payday Day</label>
+                                            <input type="number" min="1" max="31" value={rules.paydayDay} onChange={e => setRules({...rules, paydayDay: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-5 px-6 focus:outline-none focus:border-emerald-500/50 text-xl font-black text-white text-center" />
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setShowSettings(false)} className="w-full bg-white text-black py-6 rounded-3xl font-black text-[13px] uppercase tracking-[0.4em] active-scale shadow-xl">Update Rules</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
