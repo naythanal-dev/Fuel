@@ -1,11 +1,11 @@
 {
-  "name": "FUEL Budgeting",
+  "name": "FUEL — Decision Autopilot",
   "short_name": "FUEL",
-  "start_url": "index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#020408",
   "theme_color": "#020408",
-  "description": "Daily survival budgeting for extreme clarity.",
+  "description": "Extreme financial clarity and 3-bucket income allocation.",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/2933/2933116.png",
